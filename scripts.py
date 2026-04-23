@@ -832,7 +832,8 @@ def run_game(screen, num_players, mode):
                     if p.alive:
                         minimap_cam.follow(int(p.head[0]), int(p.head[1]))
                         break
-                if not any(p.alive for p in players): game_over=True
+                alive_count = sum(1 for p in players if p.alive)
+                if alive_count <= 1: game_over=True
 
         # DRAW ──
         if mode=='ai':
