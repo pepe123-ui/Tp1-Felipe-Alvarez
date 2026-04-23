@@ -181,7 +181,6 @@ _HEX_R = 42; _HEX_GAP = 3
 _C_BG = (10, 12, 16); _C_FILL = (18, 22, 28); _C_INNER = (14, 17, 22); _C_BORDER = (44, 52, 62)
 
 def _hex_pts(cx, cy, r):
-    return [(cx + r*math.cos(math.radians(60*i)), cy + r*math.sin(math.radians(60*i))) for i in range(6)]
 
 def _build_hex_tile():
     global _hex_tile, _TILE_W, _TILE_H
@@ -242,7 +241,6 @@ class Food:
 
 # ── HELPERS ───────────────────────────────────────────────────────────────────
 def _lerp_color(c1, c2, t):
-    return (int(c1[0]+(c2[0]-c1[0])*t), int(c1[1]+(c2[1]-c1[1])*t), int(c1[2]+(c2[2]-c1[2])*t))
 
 def _darker(c, a=60): return (max(0,c[0]-a), max(0,c[1]-a), max(0,c[2]-a))
 
@@ -770,4 +768,3 @@ def main():
             if mode is None: continue
             if (screen.get_width(),screen.get_height())!=res:
                 screen=pygame.display.set_mode(res)
-            run_game(screen, num_players, mode)
