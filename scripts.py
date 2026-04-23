@@ -17,6 +17,9 @@ Gris_Claro   = (80,  80,  80 )
 Ancho = Alto = 3000
 BG_COLOR   = (15, 15, 15)
 GRID_COLOR = (35, 35, 35)
+BOOST_MAX = 100.0
+BOOST_DRAIN = 0.65
+BOOST_RECHARGE = 0.35
 
 PLAYER_COLORS = [
     (Verde,      Verde_Oscuro),
@@ -31,6 +34,7 @@ CONTROL_SCHEMES = [
     {'left': pygame.K_j,     'right': pygame.K_l,     'boost': pygame.K_i},
     {'left': pygame.K_f,     'right': pygame.K_h,     'boost': pygame.K_t},
 ]
+BOOST_KEYS_TEXT = ["LShift", "RShift", "I", "T"]
 
 PLAYER_NAMES = ["P1 (A/D)", "P2 (←/→)", "P3 (J/L)", "P4 (F/H)"]
 
@@ -57,7 +61,6 @@ SKINS = [
 PLAYER_SKINS = [0, 1, 2, 3]
 
 def _draw_flag(surface, cx, cy, r, flag_code):
-    """Dibuja bandera dentro de circulo de radio r centrado en cx,cy."""
     size = r*2
     fs = pygame.Surface((size,size), pygame.SRCALPHA)
 
@@ -109,7 +112,6 @@ def _draw_flag(surface, cx, cy, r, flag_code):
     surface.blit(fs, (cx-r, cy-r))
 
 def _draw_skin_circle(surface, cx, cy, r, skin_idx):
-    """Dibuja preview de skin (bandera o color solido)."""
     sname,scol,shcol,flag = SKINS[skin_idx]
     pygame.draw.circle(surface, (10,10,20), (cx,cy), r+3)
     if flag:
@@ -119,7 +121,6 @@ def _draw_skin_circle(surface, cx, cy, r, skin_idx):
     pygame.draw.circle(surface, (60,60,80), (cx,cy), r, 2)
 
 def menu_skins(screen, player_idx=0):
-    """Mini menú de skins para un jugador. Retorna skin_idx elegido."""
     global _star_cache; _star_cache=None
     sw,sh=screen.get_size(); clock=pygame.time.Clock()
     try:
@@ -174,39 +175,36 @@ def menu_skins(screen, player_idx=0):
         _draw_button(screen,btn_ok,"CONFIRMAR",(22,130,210),f_btn,btn_ok.collidepoint(mx,my))
         pygame.display.flip(); clock.tick(60)
 
-# ── HEX TILE (fondo) ─────────────────────────────────────────────────────────
-_hex_tile = None
-_TILE_W = _TILE_H = 0
-_HEX_R = 42; _HEX_GAP = 3
+# ── HEX BACKGROUND (fondo) ───────────────────────────────────────────────────
+_HEX_R = 54; _HEX_GAP = 3
 _C_BG = (10, 12, 16); _C_FILL = (18, 22, 28); _C_INNER = (14, 17, 22); _C_BORDER = (44, 52, 62)
 
 def _hex_pts(cx, cy, r):
-
-def _build_hex_tile():
-    global _hex_tile, _TILE_W, _TILE_H
-    r = _HEX_R; col_w = math.sqrt(3)*r; row_h = 1.5*r
-    COLS, ROWS = 5, 4; tw = int(col_w*COLS); th = int(row_h*ROWS+r)
-    surf = pygame.Surface((tw, th)); surf.fill(_C_BG)
-    for col in range(-2, COLS+2):
-        for row in range(-2, ROWS+2):
-            cx = col*col_w + (col_w/2 if row%2 else 0); cy = row*row_h + r
-            if -r*2 <= cx <= tw+r*2 and -r*2 <= cy <= th+r*2:
-                pygame.draw.polygon(surf, _C_FILL,   _hex_pts(cx, cy, r-_HEX_GAP))
-                pygame.draw.polygon(surf, _C_BORDER, _hex_pts(cx, cy, r-_HEX_GAP), 2)
-                pygame.draw.polygon(surf, _C_INNER,  _hex_pts(cx, cy, r-_HEX_GAP-9))
-    _hex_tile = surf; _TILE_W = tw; _TILE_H = th
+    return [(cx + r*math.cos(math.radians(60*i)), cy + r*math.sin(math.radians(60*i))) for i in range(6)]
 
 def draw_mapa(surface, camara):
-    global _hex_tile
-    if _hex_tile is None: _build_hex_tile()
+    # Dibujo procedural: evita cortes de tile por resolucion/camara.
     sw, sh = surface.get_size()
-    ox = camara.x % _TILE_W; oy = camara.y % _TILE_H
-    y = -int(oy)
-    while y < sh:
-        x = -int(ox)
-        while x < sw:
-            surface.blit(_hex_tile, (x, y)); x += _TILE_W
-        y += _TILE_H
+    surface.fill(_C_BG)
+    r = _HEX_R
+    col_w = math.sqrt(3) * r
+    row_h = 1.5 * r
+
+    y_start = int((camara.y - r*2) // row_h) - 1
+    y_end = int((camara.y + sh + r*2) // row_h) + 1
+
+    for row in range(y_start, y_end + 1):
+        cy_world = row * row_h + r
+        x_offset = col_w / 2 if (row % 2) else 0
+        x_start = int((camara.x - col_w - x_offset) // col_w) - 1
+        x_end = int((camara.x + sw + col_w - x_offset) // col_w) + 1
+        for col in range(x_start, x_end + 1):
+            cx_world = col * col_w + x_offset
+            sx, sy = camara.apply(cx_world, cy_world)
+            if -r*2 <= sx <= sw + r*2 and -r*2 <= sy <= sh + r*2:
+                pygame.draw.polygon(surface, _C_FILL, _hex_pts(sx, sy, r-_HEX_GAP))
+                pygame.draw.polygon(surface, _C_BORDER, _hex_pts(sx, sy, r-_HEX_GAP), 2)
+                pygame.draw.polygon(surface, _C_INNER, _hex_pts(sx, sy, r-_HEX_GAP-11))
 
 # ── CAMERA ───────────────────────────────────────────────────────────────────
 class Camera:
@@ -241,6 +239,7 @@ class Food:
 
 # ── HELPERS ───────────────────────────────────────────────────────────────────
 def _lerp_color(c1, c2, t):
+    return (int(c1[0]+(c2[0]-c1[0])*t), int(c1[1]+(c2[1]-c1[1])*t), int(c1[2]+(c2[2]-c1[2])*t))
 
 def _darker(c, a=60): return (max(0,c[0]-a), max(0,c[1]-a), max(0,c[2]-a))
 
@@ -253,6 +252,8 @@ class Snake:
     def __init__(self, x, y, color, head_color):
         self.color = color; self.head_color = head_color
         self.alive = True; self.score = 0; self.boost = False; self.angle = 0.0
+        self.boost_energy = BOOST_MAX
+        self.boosting = False
         self.segments = [[float(x-i*3), float(y)] for i in range(30)]
         self._grow_accum = 0.0
 
@@ -276,9 +277,15 @@ class Snake:
             self.angle += diff*0.18
 
     def move(self):
-        speed = 5.0 if self.boost else 2.5
-        nx = (self.head[0] + math.cos(self.angle)*speed) % Ancho
-        ny = (self.head[1] + math.sin(self.angle)*speed) % Alto
+        self.boosting = bool(self.boost and self.boost_energy > 0)
+        speed = 5.0 if self.boosting else 2.5
+        if self.boosting:
+            self.boost_energy = max(0.0, self.boost_energy - BOOST_DRAIN)
+        else:
+            self.boost_energy = min(BOOST_MAX, self.boost_energy + BOOST_RECHARGE)
+        # Sin wrap: si sale del mapa, chequeo de bordes marca muerte.
+        nx = self.head[0] + math.cos(self.angle)*speed
+        ny = self.head[1] + math.sin(self.angle)*speed
         self.segments.insert(0, [nx, ny])
         if self._grow_accum >= 1.0: self._grow_accum -= 1.0
         else: self.segments.pop()
@@ -384,7 +391,7 @@ def draw_hud_multi(surface, players, names):
         _tshadow(surface, font, status, col, 12, y)
         y += 28
     # controles hint
-    hints = ["P1:A/D+LShift", "P2:←/→+RShift", "P3:J/L+I", "P4:F/H+T"]
+    hints = ["P1:A/D  Boost:LShift", "P2:←/→  Boost:RShift", "P3:J/L  Boost:I", "P4:F/H  Boost:T"]
     for i, h in enumerate(hints[:len(players)]):
         col = PLAYER_COLORS[i][0]
         lbl = font_sm.render(h, True, col)
@@ -393,9 +400,21 @@ def draw_hud_multi(surface, players, names):
 def draw_hud_solo(surface, player, cam):
     font = pygame.font.SysFont("consolas", 28, bold=True)
     font_sm = pygame.font.SysFont("consolas", 18)
-    _tshadow(surface, font,    f"Score: {player.score}",         Amarillo, 12, 12)
+    score_lbl = font.render(f"Score: {player.score}", True, Amarillo)
+    surface.blit(score_lbl, (12, 12))
+    _draw_boost_bar(surface, 12 + score_lbl.get_width() + 20, 22, 170, 18, player.boost_energy/BOOST_MAX, player.boosting)
     _tshadow(surface, font_sm, f"Length: {len(player.segments)}", Blanco,  12, 46)
-    if player.boost: _tshadow(surface, font_sm, "BOOST", (255,160,0), 12, 68)
+    if player.boosting: _tshadow(surface, font_sm, "BOOST", (255,160,0), 12, 68)
+    _tshadow(surface, font_sm, "Control: Mouse + ESPACIO", Gris_Claro, 12, 90)
+
+def _draw_boost_bar(surface, x, y, w, h, ratio, active=False):
+    ratio = max(0.0, min(1.0, ratio))
+    bg = (20, 22, 30); border = (90, 95, 120)
+    fill = (255, 160, 0) if active else (90, 210, 255)
+    pygame.draw.rect(surface, bg, (x, y, w, h), border_radius=h//2)
+    if ratio > 0:
+        pygame.draw.rect(surface, fill, (x+2, y+2, int((w-4)*ratio), h-4), border_radius=max(2, h//2-2))
+    pygame.draw.rect(surface, border, (x, y, w, h), 2, border_radius=h//2)
 
 def draw_game_over(surface, players, names, mode):
     overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA); overlay.fill((0,0,0,170))
@@ -429,7 +448,7 @@ def draw_leaderboard(surface, players, bots, names):
     pygame.draw.rect(panel, (8,8,20,210), (0,0,pw,ph), border_radius=12)
     pygame.draw.rect(panel, (90,80,160,200), (0,0,pw,ph), 2, border_radius=12)
     surface.blit(panel, (px, py0))
-    title = font.render("★ RANKING", True, (210,190,255))
+    title = font.render("RANKING", True, (210,190,255))
     surface.blit(title, (px+pw//2-title.get_width()//2, py0+pad))
     sep_y = py0+pad+20; pygame.draw.line(surface, (90,80,160), (px+6,sep_y),(px+pw-6,sep_y),1)
     for rank,(name,score,col,alive) in enumerate(entries):
@@ -529,26 +548,33 @@ def menu_main(screen):
         pygame.display.flip(); clock.tick(60)
 
 def menu_setup(screen):
-    """Configurar número de jugadores y modo."""
     global _star_cache; _star_cache = None
     sw, sh = screen.get_size(); clock = pygame.time.Clock()
     try:
-        f_title=pygame.font.SysFont("broadway",42,bold=True)
-        f_btn=pygame.font.SysFont("broadway",28,bold=True)
-        f_sm=pygame.font.SysFont("consolas",16)
+        f_title=pygame.font.SysFont("broadway",38,bold=True)
+        f_btn=pygame.font.SysFont("broadway",26,bold=True)
+        f_sm=pygame.font.SysFont("consolas",15)
+        f_label=pygame.font.SysFont("consolas",13,bold=True)
     except:
-        f_title=pygame.font.SysFont(None,48); f_btn=pygame.font.SysFont(None,34); f_sm=pygame.font.SysFont(None,20)
+        f_title=pygame.font.SysFont(None,44); f_btn=pygame.font.SysFont(None,32)
+        f_sm=pygame.font.SysFont(None,20);    f_label=pygame.font.SysFont(None,18)
 
-    cx=sw//2; bw=260; bh=50
-    num_players=1
-    btn_minus =pygame.Rect(cx-160, sh//2-110, 54, 50)
-    btn_plus  =pygame.Rect(cx+106, sh//2-110, 54, 50)
-    btn_local =pygame.Rect(cx-bw//2, sh//2-20,  bw, bh)
-    btn_ai    =pygame.Rect(cx-bw//2, sh//2+42,  bw, bh)
-    btn_back  =pygame.Rect(cx-bw//2, sh//2+106, bw, bh)
-    # Botones skin por jugador (pequeños)
-    sk_r=22; sk_gap=10
-    skin_btn_y = sh//2+175
+    cx=sw//2; num_players=1; BH=52; COL_W=240; sk_r=28; sk_gap=16
+    y_offset = int(sh*0.28)
+
+    # Botones - JUGADORES
+    btn_w=130
+    btn_minus = pygame.Rect(cx-btn_w-20, y_offset, 52, 52)
+    btn_plus  = pygame.Rect(cx+btn_w-32, y_offset, 52, 52)
+
+    # Botones - MODO JUEGO
+    btn_w2=280
+    btn_local = pygame.Rect(cx-btn_w2//2, y_offset+100, btn_w2, BH)
+    btn_ai    = pygame.Rect(cx-btn_w2//2, y_offset+170, btn_w2, BH)
+    btn_back  = pygame.Rect(cx-btn_w2//2, y_offset+240, btn_w2, BH)
+
+    # Skins
+    sk_y = int(sh*0.82)
 
     tick=0
     while True:
@@ -557,49 +583,77 @@ def menu_setup(screen):
             if event.type==pygame.QUIT: pygame.quit(); sys.exit()
             if event.type==pygame.MOUSEBUTTONDOWN:
                 if btn_minus.collidepoint(mx,my) and num_players>1: num_players-=1
-                if btn_plus.collidepoint(mx,my)  and num_players<4: num_players+=1
+                if btn_plus.collidepoint(mx,my) and num_players<4: num_players+=1
                 if btn_local.collidepoint(mx,my): return num_players,'local'
-                if btn_ai.collidepoint(mx,my):    return 1,'ai'
-                if btn_back.collidepoint(mx,my):  return None,None
-                # click en icono skin => abrir menu_skins para ese jugador
+                if btn_ai.collidepoint(mx,my): return 1,'ai'
+                if btn_back.collidepoint(mx,my): return None,None
+                # click skin
                 total_sk_w = num_players*(sk_r*2+sk_gap)-sk_gap
                 sk_start_x = cx - total_sk_w//2 + sk_r
                 for i in range(num_players):
                     scx = sk_start_x + i*(sk_r*2+sk_gap)
-                    if math.hypot(mx-scx, my-skin_btn_y) < sk_r+6:
-                        menu_skins(screen, i)
+                    if math.hypot(mx-scx, my-sk_y) < sk_r+6: menu_skins(screen, i)
             if event.type==pygame.KEYDOWN and event.key==pygame.K_ESCAPE: return None,None
 
         draw_menu_bg(screen,tick); _draw_logo(screen,tick)
+
+        # TÍTULO
         title=_outlined(f_title,"NUEVA PARTIDA",(160,220,255),(0,0,0),3)
-        screen.blit(title,(cx-title.get_width()//2,sh//4-10))
+        screen.blit(title,(cx-title.get_width()//2, int(sh*0.15)))
 
-        # Selector jugadores
-        lbl=_outlined(f_title,f"JUGADORES: {num_players}",(255,220,100),(0,0,0),3)
-        screen.blit(lbl,(cx-lbl.get_width()//2, sh//2-160))
-        _draw_button(screen,btn_minus,"−",(60,60,120),f_btn,btn_minus.collidepoint(mx,my))
-        _draw_button(screen,btn_plus, "+",(60,120,60),f_btn,btn_plus.collidepoint(mx,my))
+        # JUGADORES - SELECTOR
+        # sec1=_outlined(f_sm,"JUGADORES",(200,200,255),(0,0,0),1)
+        # screen.blit(sec1,(cx-sec1.get_width()//2, y_offset-30))
 
-        mode_note=_outlined(f_sm,"IA = 1 jugador vs bots | LOCAL = hasta 4P",(150,150,150),(0,0,0),1)
-        screen.blit(mode_note,(cx-mode_note.get_width()//2,sh//2-52))
+        box=pygame.Surface((COL_W,60),pygame.SRCALPHA)
+        pygame.draw.rect(box,(20,20,50,180),(0,0,COL_W,60),border_radius=10)
+        pygame.draw.rect(box,(80,80,160,200),(0,0,COL_W,60),2,border_radius=10)
+        screen.blit(box,(cx-COL_W//2, y_offset))
 
-        _draw_button(screen,btn_local,f"LOCAL ({num_players}P)",(22,130,210),f_btn,btn_local.collidepoint(mx,my))
-        _draw_button(screen,btn_ai,"CONTRA IA",(195,65,25),f_btn,btn_ai.collidepoint(mx,my))
-        _draw_button(screen,btn_back,"VOLVER",(80,80,80),f_btn,btn_back.collidepoint(mx,my))
+        num_lbl=_outlined(f_title,str(num_players),Amarillo,(0,0,0),3)
+        screen.blit(num_lbl,(cx-num_lbl.get_width()//2, y_offset+4))
 
-        # Previews de skins + etiqueta "SKINS"
-        sk_lbl=_outlined(f_sm,"SKINS (clic para cambiar)",Blanco,(0,0,0),1)
-        screen.blit(sk_lbl,(cx-sk_lbl.get_width()//2, skin_btn_y-sk_r-sk_lbl.get_height()-4))
+        _draw_button(screen,btn_minus,"−",(50,50,140),f_btn,btn_minus.collidepoint(mx,my))
+        _draw_button(screen,btn_plus, "+",(50,140,50),f_btn,btn_plus.collidepoint(mx,my))
+
+        ctrl_hints=[("A/D","LShift"),("←/→","RShift"),("J/L","I"),("F/H","T")]
+        hint_x = cx + COL_W//2 + 28
+        for i in range(num_players):
+            pcol=PLAYER_COLORS[i][0]
+            hint=_outlined(f_label,f"P{i+1}: {ctrl_hints[i][0]}  Boost:{ctrl_hints[i][1]}",pcol,(0,0,0),1)
+            screen.blit(hint,(hint_x, y_offset+8+i*20))
+
+        # MODO JUEGO
+        # pygame.draw.line(screen,(60,60,110),(cx-200, y_offset+155),(cx+200, y_offset+155),1)
+        # sec2=_outlined(f_sm,"MODO DE JUEGO",(200,200,255),(0,0,0),1)
+        # screen.blit(sec2,(cx-sec2.get_width()//2, y_offset+160))
+
+        _draw_button(screen,btn_local,f"▶  LOCAL  ({num_players}P)",(22,130,210),f_btn,btn_local.collidepoint(mx,my))
+        _draw_button(screen,btn_ai,"▶  CONTRA IA",(180,60,20),f_btn,btn_ai.collidepoint(mx,my))
+        _draw_button(screen,btn_back,"←  VOLVER",(60,60,80),f_btn,btn_back.collidepoint(mx,my))
+        ai_hint=_outlined(f_label,"IA: mouse para girar + ESPACIO boost",(180,180,210),(0,0,0),1)
+        screen.blit(ai_hint,(cx-ai_hint.get_width()//2, y_offset+220))
+
+        # note=_outlined(f_label,"IA usa pantalla completa + mouse",(120,120,120),(0,0,0),1)
+        # screen.blit(note,(cx-note.get_width()//2, y_offset+410))
+
+        # SKINS
+        # pygame.draw.line(screen,(60,60,110),(cx-200, sk_y-12),(cx+200, sk_y-12),1)
+        # sk_lbl=_outlined(f_sm,"SKINS  (clic = cambiar)",(180,180,255),(0,0,0),1)
+        # screen.blit(sk_lbl,(cx-sk_lbl.get_width()//2, sk_y-40))
+
         total_sk_w = num_players*(sk_r*2+sk_gap)-sk_gap
         sk_start_x = cx - total_sk_w//2 + sk_r
         for i in range(num_players):
             scx = sk_start_x + i*(sk_r*2+sk_gap)
-            hovered = math.hypot(mx-scx,my-skin_btn_y)<sk_r+6
-            if hovered: pygame.draw.circle(screen,(255,255,255),(scx,skin_btn_y),sk_r+7,2)
-            _draw_skin_circle(screen,scx,skin_btn_y,sk_r,PLAYER_SKINS[i])
+            hovered=math.hypot(mx-scx,my-sk_y)<sk_r+6
+            if hovered: pygame.draw.circle(screen,(255,255,255),(scx,sk_y),sk_r+7,3)
+            _draw_skin_circle(screen,scx,sk_y,sk_r,PLAYER_SKINS[i])
             pcol=PLAYER_COLORS[i][0]
-            nl=_outlined(f_sm,f"P{i+1}",pcol,(0,0,0),1)
-            screen.blit(nl,(scx-nl.get_width()//2,skin_btn_y+sk_r+3))
+            nl=_outlined(f_label,f"P{i+1}",pcol,(0,0,0),1)
+            screen.blit(nl,(scx-nl.get_width()//2, sk_y+sk_r+4))
+            sn=_outlined(f_label,SKINS[PLAYER_SKINS[i]][0],(200,200,200),(0,0,0),1)
+            screen.blit(sn,(scx-sn.get_width()//2, sk_y-sk_r-sn.get_height()-3))
 
         pygame.display.flip(); clock.tick(60)
 
@@ -630,10 +684,56 @@ def menu_options(screen):
         _draw_button(screen,btn_back,"VOLVER",(80,80,80),f_btn,btn_back.collidepoint(mx,my))
         pygame.display.flip(); clock.tick(60)
 
+# ── SPLIT SCREEN HELPERS ─────────────────────────────────────────────────────
+def _get_viewports(sw, sh, num_players):
+    if num_players == 1:
+        return [(0, 0, sw, sh)]
+    elif num_players == 2:
+        hw = sw//2
+        return [(0,0,hw,sh),(hw,0,hw,sh)]
+    else:  # 3 o 4
+        hw,hh = sw//2, sh//2
+        vps = [(0,0,hw,hh),(hw,0,hw,hh),(0,hh,hw,hh),(hw,hh,hw,hh)]
+        return vps[:num_players]
+
+def _draw_viewport(surface, vp_rect, player, food, bots, all_players, border_col, player_idx):
+    vx,vy,vw,vh = vp_rect
+    vsurf = pygame.Surface((vw,vh))
+    cam = Camera(vw,vh)
+    # seguir al jugador (o quedarse si muerto)
+    if player.alive:
+        cam.follow(int(player.head[0]), int(player.head[1]))
+    else:
+        cam.follow(int(player.segments[0][0]), int(player.segments[0][1]))
+
+    draw_mapa(vsurf, cam)
+    for f in food: f.draw(vsurf, cam)
+    for b in bots:
+        if b.alive: b.draw(vsurf, cam)
+    for p in all_players:
+        if p.alive: p.draw(vsurf, cam)
+    draw_border(vsurf, cam)
+
+    # HUD mini en esquina
+    font = pygame.font.SysFont("consolas", 18, bold=True)
+    font_sm = pygame.font.SysFont("consolas", 13)
+    status = f"Score: {player.score}" if player.alive else "MUERTO"
+    _tshadow(vsurf, font, status, border_col, 8, 8)
+    _tshadow(vsurf, font_sm, f"Largo: {len(player.segments)}", Blanco, 8, 30)
+    _draw_boost_bar(vsurf, 8, 46, 120, 12, player.boost_energy/BOOST_MAX, player.boosting and player.alive)
+    _tshadow(vsurf, font_sm, f"Boost: {BOOST_KEYS_TEXT[player_idx]}", Gris_Claro, 8, 62)
+    if player.boosting and player.alive:
+        _tshadow(vsurf, font_sm, "BOOST!", (255,160,0), 8, 78)
+
+    # Borde de viewport con color del jugador
+    pygame.draw.rect(vsurf, border_col, (0,0,vw,vh), 3)
+
+    surface.blit(vsurf, (vx,vy))
+
 # ── GAME LOOP ─────────────────────────────────────────────────────────────────
 def run_game(screen, num_players, mode):
     clock = pygame.time.Clock(); sw, sh = screen.get_size()
-    cam = Camera(sw, sh)
+    cam_ai = Camera(sw, sh)  # solo para modo AI (pantalla completa)
 
     def make_players():
         ps=[]
@@ -645,8 +745,9 @@ def run_game(screen, num_players, mode):
         return ps
 
     def make_bots(n=3):
-        bs=[]; bc=[(220,60,180),(150,20,120)]; bnames=["Cazador","Rondador","Evasivo"]
         bot_colors=[(220,60,180),(0,180,220),(255,180,0)]
+        bnames=["Cazador","Rondador","Evasivo"]
+        bs=[]
         for i in range(n):
             x=random.randint(400,Ancho-400); y=random.randint(400,Alto-400)
             c=bot_colors[i%3]; hc=_darker(c,60)
@@ -661,6 +762,8 @@ def run_game(screen, num_players, mode):
     food=make_food()
     names=PLAYER_NAMES[:num_players]
     game_over=False
+    viewports=_get_viewports(sw,sh,num_players)
+    minimap_cam = Camera(sw, sh)  # cámara para minimapa en modo local
 
     while True:
         keys=pygame.key.get_pressed()
@@ -673,12 +776,11 @@ def run_game(screen, num_players, mode):
                     food=make_food(); game_over=False
 
         if not game_over:
-            # Mover jugadores
             for i,p in enumerate(players):
                 if not p.alive: continue
                 cs=CONTROL_SCHEMES[i]
-                if mode=='ai' and i==0:  # modo IA: mouse para P1
-                    mx2,my2=pygame.mouse.get_pos(); p.aim_mouse(mx2,my2,cam)
+                if mode=='ai' and i==0:
+                    mx2,my2=pygame.mouse.get_pos(); p.aim_mouse(mx2,my2,cam_ai)
                     p.boost=keys[pygame.K_SPACE]
                 else:
                     if keys[cs['left']]:  p.turn('left')
@@ -686,68 +788,107 @@ def run_game(screen, num_players, mode):
                     p.boost=keys[cs['boost']]
                 p.move(); p.eat(food)
 
-            # Mover bots
             for b in bots: b.update(food, players+bots)
 
-            # Colisiones jugador vs bot
+            # Chequeo de bordes: los jugadores mueren si tocan el borde
+            for p in players:
+                if p.alive and (p.head[0] < 0 or p.head[0] > Ancho or p.head[1] < 0 or p.head[1] > Alto):
+                    p.alive = False
+
+            # Colisiones serpiente-bot
             for p in players:
                 if not p.alive: continue
                 for b in bots:
                     if b.alive and p.collides_with(b): p.alive=False; break
-
-            # Colisiones jugadores entre sí
+            # Colisiones serpiente-serpiente
             for i,p in enumerate(players):
                 if not p.alive: continue
                 for j,q in enumerate(players):
                     if i!=j and q.alive and p.collides_with(q): p.alive=False; break
-
-            # Colisiones bot vs jugador
+            # Colisiones bot-serpiente
             for b in bots:
                 if not b.alive: continue
                 for p in players:
                     if p.alive and b.collides_with(p): b.alive=False; break
 
-            # Comida
             while len(food)<80: food.append(Food())
             for f in food: f.update()
 
-            # Cámara: seguir jugador vivo (P1 en modo AI, votación en local)
-            target=None
+            if mode=='ai':
+                if players[0].alive: cam_ai.follow(int(players[0].head[0]), int(players[0].head[1]))
+                if not players[0].alive: game_over=True
+            if mode=='local':
+                # Minimapa sigue al primer jugador vivo (o último posición si todos muertos)
+                for p in players:
+                    if p.alive:
+                        minimap_cam.follow(int(p.head[0]), int(p.head[1]))
+                        break
+                if not any(p.alive for p in players): game_over=True
+
+        # DRAW ──
+        if mode=='ai':
+            # Pantalla completa para IA
+            draw_mapa(screen, cam_ai)
+            for f in food: f.draw(screen, cam_ai)
+            for b in bots:
+                if b.alive: b.draw(screen, cam_ai)
             for p in players:
-                if p.alive: target=p; break
-            if target is None and bots:
-                for b in bots:
-                    if b.alive: target=b; break
-            if target: cam.follow(int(target.head[0]), int(target.head[1]))
-
-            # Game over
-            if mode=='ai' and not players[0].alive: game_over=True
-            if mode=='local' and not any(p.alive for p in players): game_over=True
-
-        # DRAW
-        draw_mapa(screen, cam)
-        for f in food: f.draw(screen, cam)
-        for b in bots:
-            if b.alive: b.draw(screen, cam)
-        for p in players:
-            if p.alive: p.draw(screen, cam)
-        draw_border(screen, cam)
-
-        if mode=='local':
-            draw_hud_multi(screen, players, names)
-            draw_leaderboard(screen, players, [], names)
-        else:
-            draw_hud_solo(screen, players[0], cam)
+                if p.alive: p.draw(screen, cam_ai)
+            draw_border(screen, cam_ai)
+            draw_hud_solo(screen, players[0], cam_ai)
             draw_leaderboard(screen, players, bots, names)
+            all_snakes=players+bots
+            all_cols=[PLAYER_COLORS[i][0] for i in range(len(players))]+[b.color for b in bots]
+            draw_minimap(screen, all_snakes, cam_ai, all_cols)
+        else:
+            # SPLIT SCREEN
+            screen.fill((0,0,0))
+            for i,p in enumerate(players):
+                pcol=PLAYER_COLORS[i][0]
+                _draw_viewport(screen, viewports[i], p, food, bots, players, pcol, i)
 
-        all_snakes=[p for p in players]+bots
-        all_cols=[PLAYER_COLORS[i][0] for i in range(len(players))]+[b.color for b in bots]
-        draw_minimap(screen, all_snakes, cam, all_cols)
+            # Etiqueta de jugador en cada viewport
+            font_label=pygame.font.SysFont("consolas",20,bold=True)
+            for i,(vx,vy,vw,vh) in enumerate(viewports):
+                pcol=PLAYER_COLORS[i][0]
+                lbl=_outlined(font_label,f" P{i+1} ",pcol,(0,0,0),2)
+                screen.blit(lbl,(vx+vw//2-lbl.get_width()//2, vy+4))
+
+            # Línea divisoria central
+            if num_players>=2:
+                pygame.draw.line(screen,(30,30,30),(sw//2,0),(sw//2,sh),2)
+            if num_players>=3:
+                pygame.draw.line(screen,(30,30,30),(0,sh//2),(sw,sh//2),2)
+
+            # Ranking global en centro (solo si 3-4 jugadores)
+            if num_players>=3:
+                _draw_center_scores(screen, players, names, sw, sh)
+            
+            # Minimapa para multijugador local (sigue jugador vivo)
+            all_snakes = players + bots
+            all_cols = [PLAYER_COLORS[i][0] for i in range(len(players))] + [b.color for b in bots]
+            draw_minimap(screen, all_snakes, minimap_cam, all_cols)
 
         if game_over:
             draw_game_over(screen, players, names, mode)
 
         pygame.display.flip(); clock.tick(60)
+
+def _draw_center_scores(screen, players, names, sw, sh):
+    font=pygame.font.SysFont("consolas",14,bold=True)
+    entries=sorted(enumerate(players),key=lambda x:-x[1].score)
+    panel_w=110; row_h=20; pad=6
+    panel_h=pad*2+len(entries)*row_h
+    px=sw//2-panel_w//2; py=sh//2-panel_h//2
+    panel=pygame.Surface((panel_w,panel_h),pygame.SRCALPHA)
+    panel.fill((0,0,0,180))
+    pygame.draw.rect(panel,(80,80,80,200),(0,0,panel_w,panel_h),1)
+    screen.blit(panel,(px,py))
+    for rank,(i,p) in enumerate(entries):
+        col=PLAYER_COLORS[i][0] if p.alive else (60,60,60)
+        txt=f"P{i+1}: {p.score}"
+        lbl=font.render(txt,True,col)
+        screen.blit(lbl,(px+pad,py+pad+rank*row_h))
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────
 def main():
@@ -768,3 +909,4 @@ def main():
             if mode is None: continue
             if (screen.get_width(),screen.get_height())!=res:
                 screen=pygame.display.set_mode(res)
+            run_game(screen, num_players, mode)
