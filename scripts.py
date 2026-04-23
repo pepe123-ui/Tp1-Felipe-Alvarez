@@ -45,6 +45,7 @@ SKINS = [
     ("Rojo",       (220,60,60),   (140,20,20),   None),
     ("Azul",       (0,180,220),   (0,100,160),   None),
     ("Púrpura",    (180,80,255),  (110,30,180),  None),
+
     ("Rosa",       (255,80,160),  (180,20,100),  None),
     ("Amarillo",   (255,200,0),   (180,120,0),   None),
     ("Argentina",  (75,160,220),  (255,255,255), "ARG"),
@@ -810,6 +811,14 @@ def run_game(screen, num_players, mode):
                 if not b.alive: continue
                 for p in players:
                     if p.alive and b.collides_with(p): b.alive=False; break
+            # Colisiones bot-bot
+            for i,b in enumerate(bots):
+                if not b.alive: continue
+                for j,c in enumerate(bots):
+                    if i!=j and c.alive and b.collides_with(c):
+                        b.alive=False
+                        c.alive=False
+                        break
 
             while len(food)<80: food.append(Food())
             for f in food: f.update()
